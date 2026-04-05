@@ -1,0 +1,100 @@
+version: "3.9"
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: me_postgres
+    environment:
+      POSTGRES_DB: me_game
+      POSTGRES_USER: me_user
+      POSTGRES_PASSWORD: me_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U me_user -d me_game"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ──────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: me_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── FastAPI Backend ────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: me_api
+    environment:
+      ENV: development
+      DATABASE_URL: postgresql+asyncpg://me_user:me_pass@postgres:5432/me_game
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-prod}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app   # hot reload in dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ── Celery Worker (async AI tasks) ─────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: me_worker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://me_user:me_pass@postgres:5432/me_game
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    depends_on:
+      - postgres
+      - redis
+    command: celery -A app.worker worker --loglevel=info --concurrency=4
+
+  # ── Celery Beat (scheduled jobs) ───────────────────────────
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: me_beat
+    environment:
+      DATABASE_URL: postgresql+asyncpg://me_user:me_pass@postgres:5432/me_game
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+    depends_on:
+      - postgres
+      - redis
+    command: celery -A app.worker beat --loglevel=info
+
+volumes:
+  postgres_data:
+  redis_data:

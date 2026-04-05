@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "ME — The Life Game",
+    "slug": "me-life-game",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0D0D0F"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.yourcompany.melifegame"
+    },
+    "android": {
+      "adaptiveIcon": { "backgroundColor": "#0D0D0F" },
+      "package": "com.yourcompany.melifegame"
+    },
+    "plugins": ["expo-router"],
+    "scheme": "melifegame",
+    "extra": {
+      "eas": { "projectId": "your-eas-project-id" }
+    }
+  }
+}
